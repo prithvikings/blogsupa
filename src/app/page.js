@@ -1,9 +1,16 @@
+
 import React from 'react'
 import { Button } from '@/components/ui/button'
-const page = () => {
+import { createClient } from '@/lib/supabase/server'
+const page =async () => {
+ const supabase = await createClient()
+ const {data:{user}}=await supabase.auth.getUser()
   return (
     <div className='flex items-center justify-center min-h-screen bg-gray-100'>
-      <Button className="cursor-pointer">Click Me</Button>
+      <form action="/auth/signout" method="POST">
+      <Button>Logout</Button>
+      </form>
+      {JSON.stringify(user)}
     </div>
   )
 }

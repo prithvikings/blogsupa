@@ -26,3 +26,7 @@ They basically gives you everything like auth, db, stograge, realtime, crud Api
 1. install @supabase/ssr 
 2. then create client and server file you can refer it from lib/supabase folder
 3. We have added client and server both file cause nextjs support both so we need both and in client it is very simple and straight forward but in server we need to have cookies and all so that we can use in authentication
+4. go to supabase documentation guides getstart quick start in that go to nextjs
+
+
+## For adding authentication
