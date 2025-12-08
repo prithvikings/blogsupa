@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -21,12 +21,13 @@ import { Moon, Sun } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function EditorPage() {
-  const [editor, setEditor] = useState(null);
+  const editorRef = useRef(null);
   const [title, setTitle] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const [isEditorReady, setIsEditorReady] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const postId = searchParams.get("id");
@@ -39,8 +40,13 @@ export default function EditorPage() {
   }, []);
 
   useEffect(() => {
+    let editorInstance = null;
+
     const initEditor = async () => {
-      const editorInstance = new EditorJS({
+      // Prevent multiple initializations
+      if (editorRef.current) return;
+
+      editorInstance = new EditorJS({
         holder: "editorjs",
         tools: {
           header: Header,
@@ -60,13 +66,13 @@ export default function EditorPage() {
 
                   const fileName = `${Date.now()}-${file.name}`;
                   const { error: uploadError } = await supabase.storage
-                    .from("blog-img")
+                    .from("blog-images")
                     .upload(`${user.id}/${fileName}`, file);
 
                   if (uploadError) throw uploadError;
 
                   const { data } = supabase.storage
-                    .from("blog-img")
+                    .from("blog-images")
                     .getPublicUrl(`${user.id}/${fileName}`);
 
                   return {
@@ -82,8 +88,11 @@ export default function EditorPage() {
         },
         onReady: () => {
           console.log("Editor ready");
+          setIsEditorReady(true);
         },
       });
+
+      editorRef.current = editorInstance;
 
       // Load existing post if editing
       if (postId) {
@@ -96,25 +105,36 @@ export default function EditorPage() {
         if (post) {
           setTitle(post.title);
           setExcerpt(post.excerpt || "");
-          await editorInstance.render(post.content);
+          
+          // Parse content if it's a string
+          const content = typeof post.content === 'string' 
+            ? JSON.parse(post.content) 
+            : post.content;
+          
+          await editorInstance.isReady;
+          await editorInstance.render(content);
         }
       }
-
-      setEditor(editorInstance);
     };
 
     initEditor();
 
     return () => {
-      if (editor && editor.destroy) {
-        editor.destroy();
+      if (editorRef.current && editorRef.current.destroy) {
+        editorRef.current.destroy();
+        editorRef.current = null;
       }
     };
-  }, [postId, supabase]);
+  }, [postId]); // Remove supabase from dependencies
 
   const handleSave = async () => {
-    if (!editor || !title.trim()) {
+    if (!editorRef.current || !title.trim()) {
       setError("Title is required");
+      return;
+    }
+
+    if (!isEditorReady) {
+      setError("Editor is not ready yet");
       return;
     }
 
@@ -127,36 +147,51 @@ export default function EditorPage() {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const content = await editor.save();
+      // Wait for editor to be ready and save content
+      await editorRef.current.isReady;
+      const content = await editorRef.current.save();
+
+      console.log("Saving content:", content); // Debug log
 
       if (postId) {
+        // Update existing post
         const { error: updateError } = await supabase
           .from("posts")
           .update({
             title,
             excerpt,
-            content: JSON.stringify(content),
+            content: content, // Don't stringify - Supabase handles JSONB
             updated_at: new Date().toISOString(),
           })
           .eq("id", postId)
           .eq("user_id", user.id);
 
         if (updateError) throw updateError;
+        
+        alert("Post updated successfully!");
       } else {
-           const { error: insertError } = await supabase.from("posts").insert({
-          title,
-          excerpt,
-          content: JSON.stringify(content),
-          user_id: user.id,
-        })
-         if (insertError) throw insertError;
-             router.push("/")
+        // Insert new post
+        const { data, error: insertError } = await supabase
+          .from("posts")
+          .insert({
+            title,
+            excerpt,
+            content: content, // Don't stringify - Supabase handles JSONB
+            user_id: user.id,
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        
+        console.log("Post created:", data); // Debug log
+        router.push("/");
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to save post")
-    }
-    finally{
-      setSaving(false)
+      console.error("Save error:", error); // Debug log
+      setError(error instanceof Error ? error.message : "Failed to save post");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -227,7 +262,6 @@ export default function EditorPage() {
             <div
               id="editorjs"
               className="max-w-none bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-4 min-h-96
-              text-zinc-900 dark:text-zinc-50
               prose lg:prose-xl
                prose-headings:text-zinc-900 dark:prose-headings:text-zinc-50
                 prose-p:text-zinc-700 dark:prose-p:text-zinc-300
@@ -252,7 +286,7 @@ export default function EditorPage() {
           <div className="flex gap-2">
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !isEditorReady}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {saving ? <Spinner /> : "Save Post"}
