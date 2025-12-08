@@ -29,4 +29,13 @@ They basically gives you everything like auth, db, stograge, realtime, crud Api
 4. go to supabase documentation guides getstart quick start in that go to nextjs
 
 
-## For adding authentication
+## what is Row level Security (rls)
+1. It is a database feature that control who can see or Modify specfic rows(Record)
+
+
+## For text editor
+``` 
+npm i @editorjs/editorjs @editorjs/header @editorjs/paragraph @editorjs/list @editorjs/quote @editorjs/code @editorjs/image
+
+
+```
